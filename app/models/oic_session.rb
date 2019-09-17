@@ -145,9 +145,11 @@ class OicSession < ActiveRecord::Base
 
   def member_roles
     if user["member_of"].present?
-      return user["member_of"] 
+      return user["member_of"]
     elsif user["resource_access"].present? && user["resource_access"][client_config['client_id']].present?
       return user["resource_access"][client_config['client_id']]
+    end
+  end
 
   def user
     if @user.blank? || id_token_changed?
