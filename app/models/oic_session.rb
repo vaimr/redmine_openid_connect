@@ -97,22 +97,25 @@ class OicSession < ActiveRecord::Base
   end
 
   def get_user_info!
-    uri = dynamic_config['userinfo_endpoint']
+    if !@user_info.present? || id_token_changed?
+      uri = dynamic_config['userinfo_endpoint']
 
-    HTTParty::Basement.default_options.update(verify: false) if client_config['disable_ssl_validation']
-    response = HTTParty.get(
-      uri,
-      headers: { "Authorization" => "Bearer #{access_token}" }
-    )
+      HTTParty::Basement.default_options.update(verify: false) if client_config['disable_ssl_validation']
+      response = HTTParty.get(
+        uri,
+        headers: { "Authorization" => "Bearer #{access_token}" }
+      )
 
-    if response.headers["content-type"] == 'application/jwt'
-      # signed / encrypted response, extract before using
-      return self.class.parse_token(response)
-    else
-      # unsigned response, just return the bare json
-      return JSON::parse(response.body)
-      decoded_token = response.body
+      if response.headers["content-type"] == 'application/jwt'
+        # signed / encrypted response, extract before using
+        @user_info = self.class.parse_token(response)
+      else
+        # unsigned response, just return the bare json
+        @user_info = JSON::parse(response.body)
+        decoded_token = response.body
+      end
     end
+    return @user_info
   end
 
   def authorized?
@@ -121,7 +124,7 @@ class OicSession < ActiveRecord::Base
     end
     
     member_roles = self.member_roles
-    
+    logger.warn member_roles
     return false if !member_roles
 
     return true if self.admin?
@@ -144,11 +147,14 @@ class OicSession < ActiveRecord::Base
   end
 
   def member_roles
-    if user["member_of"].present?
-      return user["member_of"]
-    elsif user["resource_access"].present? && user["resource_access"][client_config['client_id']].present?
-      return user["resource_access"][client_config['client_id']]
+    if !@member_roles.present? || id_token_changed?
+      if user['member_of'].present?
+        @member_roles = user['member_of']
+      elsif get_user_info!['resource_access'].present? && get_user_info!['resource_access'][client_config['client_id']].present?
+        @member_roles = get_user_info!['resource_access'][client_config['client_id']]
+      end
     end
+    return @member_roles
   end
 
   def user
