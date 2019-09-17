@@ -86,7 +86,7 @@ class OicSession < ActiveRecord::Base
 
   def self.parse_token(token)
     jwt = token.split('.')
-    return JSON::parse(Base64::decode64(jwt[1]))
+    return JSON::parse(Base64::urlsafe_decode64(jwt[1]))
   end
 
   def claims
@@ -119,13 +119,15 @@ class OicSession < ActiveRecord::Base
     if client_config['group'].blank?
       return true
     end
-
-    return false if !user["member_of"]
+    
+    member_roles = self.member_roles
+    
+    return false if !member_roles
 
     return true if self.admin?
 
     if client_config['group'].present? &&
-       user["member_of"].include?(client_config['group'])
+       member_roles.include?(client_config['group'])
       return true
     end
 
@@ -134,16 +136,22 @@ class OicSession < ActiveRecord::Base
 
   def admin?
     if client_config['admin_group'].present? &&
-       user["member_of"].include?(client_config['admin_group'])
+       self.member_roles.include?(client_config['admin_group'])
       return true
     end
 
     return false
   end
 
+  def member_roles
+    if user["member_of"].present?
+      return user["member_of"] 
+    elsif user["resource_access"].present? && user["resource_access"][client_config['client_id']].present?
+      return user["resource_access"][client_config['client_id']]
+
   def user
     if @user.blank? || id_token_changed?
-      @user = JSON::parse(Base64::decode64(id_token.split('.')[1]))
+      @user = JSON::parse(Base64::urlsafe_decode64(id_token.split('.')[1]))
     end
     return @user
   end
